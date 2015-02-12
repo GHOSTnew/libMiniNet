@@ -24,10 +24,10 @@ all: libLibMiniNet.so
 libLibMiniNet.so: $(OBJS) $(USER_OBJS)
 	@echo 'Building target: $@'
 	@echo 'Invoking: Cross GCC Linker'
-	gcc -shared -o "libLibMiniNet.so" $(OBJS) $(USER_OBJS) $(LIBS)
+	gcc -shared -o "libMiniNet.so" $(OBJS) $(USER_OBJS) $(LIBS)
 	@echo 'Finished building target: $@'
 	@echo ' '
 
 clean:
-	-$(RM) $(OBJS)$(C_DEPS)$(LIBRARIES) libLibMiniNet.so
+	-$(RM) $(OBJS)$(C_DEPS)$(LIBRARIES) libMiniNet.so
 	-@echo ' '

@@ -16,17 +16,28 @@
 #ifndef NET_H_
 #define NET_H_
 
-#include <stdio.h>
-#include <string.h>
-#include <stdlib.h>
-#ifdef _WIN33
+#define MININET_VERSION "1.1.0"
+
+/* --------- WINDOWS ------------ */
+#ifdef _WIN32
 	#ifndef _WIN32_WINNT
 		#define  _WIN32_WINNT 0x0501
 	#endif
 	#include <winsock.h>
 	#include <winsock2.h>
 	#include <Ws2tcpip.h>
+
+/* --------- NINTENDO WII --------- */
+#elif defined WII
+	#include <network.h>
+
+/* ------------- UNIX ------------- */
 #else
+/* -------- z/OS------------- */
+	#ifdef  __MVS__
+		#define _OE_SOCKETS
+	#endif
+/* -------- end z/OS--------- */
 	#include <sys/socket.h>
 	#include <arpa/inet.h>
 	#include <netdb.h>
@@ -36,29 +47,31 @@
 #ifdef OPENSSL
 	#include <openssl/ssl.h>
 	#include <openssl/err.h>
-#endif
-#ifdef GNUTLS
+#elif defined GNUTLS
 	#include <gnutls/gnutls.h>
 #endif
 
-#ifdef MINIUPNP
-#include "miniwget.h"
-#include "miniupnpc.h"
-#include "upnpcommands.h"
-#include "upnperrors.h"
+#ifdef UPNP
+#include <miniupnpc/miniwget.h>
+#include <miniupnpc/miniupnpc.h>
+#include <miniupnpc/upnpcommands.h>
 #endif
 
 typedef struct conn conn;
 struct conn {
+#ifdef WII
+	s32 sock;
+#else
 	int sock;
-#ifdef OPENSSL
+#endif
+#if defined OPENSSL || defined GNUTLS
 	int isSSL;
+#ifdef OPENSSL
 	SSL *sslHandle;
 	SSL_CTX *ctx;
-#endif
-#ifdef GNUTLS
-	int isSSL;
+#else
 	gnutls_session_t session;
+#endif
 #endif
 };
 
@@ -67,6 +80,10 @@ enum CONN_TYPE {
 	TCP,
 	UDP
 };
+
+#ifdef WII
+static char ip_addr[16] = {0};
+#endif
 
 #ifdef  __cplusplus
 extern "C" {
@@ -82,7 +99,9 @@ conn * socketAccept(conn *connection, struct sockaddr *__restrict addr, socklen_
 int loadCert(conn * connection, char * certPath, char * keyPath);
 int socketClose(conn *connection);
 int socketSend(conn *connection, const void * buf, size_t len, int flags);
-
+int socketRecv(conn *connection, void *buf, int len, int flags);
+int openPort(short port);
+int closePort(short port);
 #ifdef  __cplusplus
 }
 #endif

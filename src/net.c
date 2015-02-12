@@ -22,6 +22,10 @@ int NET_INIT(void) {
 	{
 		return -1
 	}
+#elif defined WII
+	if(if_config(adresse_ip,NULL,NULL, TRUE) < 0) {
+		return -1;
+	}
 #endif
 	return 0;
 }
@@ -62,30 +66,45 @@ conn* socketClient(const char * hostname, const short port, CONN_TYPE type, int 
 	struct hostent *host;
 	conn * connection;
 	connection = malloc(sizeof(conn));
+#if defined OPENSSL || defined GNUTLS
+	connection->isSSL = ssl;
 #ifdef OPENSSL
 	connection->sslHandle = NULL;
 	connection->ctx = NULL;
 	connection->isSSL = ssl;
 #endif
-#ifdef GNUTLS
-	connection->isSSL = ssl;
 #endif
+#ifdef WII
+	host = net_gethostbyname(hostname);
+#else
 	host = gethostbyname(hostname);
+#endif
 	if (type == TCP) {
+#ifdef WII
+		if ((connection->sock = net_socket(AF_INET, SOCK_STREAM, IPPROTO_IP)) < 0) {
+#else
 		if ((connection->sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0) {
+#endif
 			return NULL;
 		}
 	} else {
+#ifdef WII
+		if ((connection->sock = net_socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) < 0) {
+#else
 		if ((connection->sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) < 0) {
+#endif
 			return NULL;
 		}
 	}
 	memset(&ServerAddr, 0, sizeof(ServerAddr));
 	ServerAddr.sin_family = AF_INET;
-	ServerAddr.sin_addr = *((struct in_addr *) host->h_addr);
+	ServerAddr.sin_addr = *((struct in_addr *) host->h_addr_list[0]);
 	ServerAddr.sin_port = htons(port);
-
+#ifdef WII
+	if (net_connect(connection->sock, (struct sockaddr *) &ServerAddr, sizeof(ServerAddr)) < 0) {
+#else
 	if (connect(connection->sock, (struct sockaddr *) &ServerAddr, sizeof(ServerAddr)) < 0) {
+#endif
 		return NULL;
 	}
 
@@ -131,11 +150,19 @@ conn * socketServer(const short port, CONN_TYPE type, int ssl) {
 #endif
 
 	if (type == TCP) {
+#ifdef WII
+		if ((connection->sock = net_socket(AF_INET, SOCK_STREAM, IPPROTO_IP)) < 0) {
+#else
 		if ((connection->sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0) {
+#endif
 			return NULL;
 		}
 	} else {
+#ifdef WII
+		if ((connection->sock = net_socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) < 0) {
+#else
 		if ((connection->sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) < 0) {
+#endif
 			return NULL;
 		}
 	}
@@ -143,12 +170,18 @@ conn * socketServer(const short port, CONN_TYPE type, int ssl) {
 	ServerAddr.sin_family = AF_INET;
 	ServerAddr.sin_port = htons(port);
 	ServerAddr.sin_addr.s_addr = INADDR_ANY;
-
+#ifdef WII
+	if (net_bind(conection->sock, (struct sockaddr*)&ServerAddr, sizeof(ServerAddr)) < 0) {
+#else
 	if (bind(connection->sock, (struct sockaddr*)&ServerAddr, sizeof(ServerAddr)) < 0) {
+#endif
 		return NULL;
 	}
-
+#ifdef WII
+	if (net_listen(connection->sock, 10) != 0) {
+#else
 	if (listen(connection->sock, 10) != 0) {
+#endif
 		return NULL;
 	}
 	return connection;
@@ -181,7 +214,13 @@ conn * socketAccept(conn *connection, struct sockaddr *__restrict addr, socklen_
 #ifdef GNUTLS
 	client->isSSL = connection->isSSL;
 #endif
+
+#ifdef WII
+	client->sock = net_accept(connection->sock, addr, __addr_len);
+#else
 	client->sock = accept(connection->sock, addr, __addr_len);
+#endif
+
 #if defined OPENSSL || defined GNUTLS
 	if (connection->isSSL == 1) {
 #ifdef OPENSSL
@@ -194,8 +233,7 @@ conn * socketAccept(conn *connection, struct sockaddr *__restrict addr, socklen_
 		if (SSL_accept(connection->sslHandle) < 0) {
 			return NULL;
 		}
-#endif
-#ifdef GNUTLS
+#elif defined GNUTLS
 #endif
 	} else {
 #endif
@@ -210,6 +248,8 @@ int socketClose(conn *connection) {
 #ifdef _WIN32
 	shutdown(connection->sock, SD_BOTH);
 	closesocket(connection->sock);
+#elif defined WII
+	net_close(connection->sock);
 #else
 	shutdown(connection->sock, SHUT_RDWR);
 	close(connection->sock);
@@ -238,13 +278,17 @@ int socketSend(conn *connection, const void * buf, size_t len, int flags) {
 	if (connection->isSSL == 1) {
 		SSL_write (connection->sslHandle, buf, len);
 	} else {
-#endif
-#ifdef GNUTLS
+#elif defined GNUTLS
 	if (connection->isSSL == 1) {
 		gnutls_record_send(connection->session, buf, len);
 	} else {
 #endif
+
+#ifdef WII
+	if (net_send(connection->sock, buf, len, flags) != len) {
+#else
 	if (send(connection->sock, buf, len, flags) != len) {
+#endif
 		return -1;
 	}
 #if defined OPENSSL || defined GNUTLS
@@ -263,8 +307,26 @@ int socketRecv(conn *connection, void *buf, int len, int flags) {
 #endif
 	} else {
 #endif
+#ifdef WII
+		return net_recv(connection->sock, buf, len, flags);
+#else
 		return recv(connection->sock, buf, len, flags);
+#endif
 #if defined OPENSSL || defined GNUTLS
 	}
+#endif
+}
+
+int openPort(short port) {
+#ifdef UPNP
+#else
+	return -1;
+#endif
+}
+
+int closePort(short port) {
+#ifdef UPNP
+#else
+	return -1;
 #endif
 }

@@ -11,4 +11,3 @@
 
 - [ ] Utiliser Autoconf
 - [ ] Finir le support de GnuTLS
-- [ ] Redirection de port avec MiniUPnP

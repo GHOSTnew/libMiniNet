@@ -23,8 +23,12 @@ int NET_INIT(void) {
 		return -1
 	}
 #elif defined WII
-	if(if_config(adresse_ip,NULL,NULL, TRUE) < 0) {
+	if(if_config(ip_addr, NULL, NULL, TRUE) < 0) {
 		return -1;
+	}
+#elif defined DS
+	if(!Wifi_InitDefault(WFC_CONNECT)) {
+		return -1
 	}
 #endif
 	return 0;
@@ -35,8 +39,7 @@ int NET_SSL_INIT(void) {
 	SSL_load_error_strings();
 	SSL_library_init();
 	OpenSSL_add_all_algorithms();
-#endif
-#ifdef GNUTLS
+#elif defined GNUTLS
 	if (gnutls_check_version("3.1.4") == NULL) {
 		return -1;
 	}
@@ -47,8 +50,7 @@ int NET_SSL_INIT(void) {
 
 int NET_SSL_CLEAN(void) {
 #ifdef OPENSSL
-#endif
-#ifdef GNUTLS
+#elif defined GNUTLS
 	gnutls_global_deinit();
 #endif
 	return 0;
@@ -61,18 +63,26 @@ int NET_CLEAN(void) {
 	return 0;
 }
 
-conn* socketClient(const char * hostname, const short port, CONN_TYPE type, int ssl) {
+Conn_t *socketClient(const char *hostname, const unsigned short port, ConnType_t type, int ssl) {
 	struct sockaddr_in ServerAddr;
 	struct hostent *host;
-	conn * connection;
-	connection = malloc(sizeof(conn));
+	Conn_t *connection;
+	connection = malloc(sizeof(Conn_t));
 #if defined OPENSSL || defined GNUTLS
 	connection->isSSL = ssl;
-#ifdef OPENSSL
-	connection->sslHandle = NULL;
-	connection->ctx = NULL;
-	connection->isSSL = ssl;
-#endif
+	#ifdef OPENSSL
+		connection->sslHandle = NULL;
+		connection->ctx = NULL;
+	#elif defined GNUTLS
+		gnutls_init(&(connection->session), GNUTLS_CLIENT);
+		gnutls_session_set_ptr(connection->session, (void *)hostname);
+		gnutls_server_name_set(connection->session, GNUTLS_NAME_DNS, hostname, strlen(hostname));
+		gnutls_set_default_priority(connection->session);
+	#endif
+#else
+	if (ssl == 1) {
+		return NULL;
+	}
 #endif
 #ifdef WII
 	host = net_gethostbyname(hostname);
@@ -127,7 +137,8 @@ conn* socketClient(const char * hostname, const short port, CONN_TYPE type, int 
 		if (SSL_connect(connection->sslHandle) != 1) {
 			return NULL;
 		}
-
+#elif defined GNUTLS
+		gnutls_handshake(connection->session);
 #endif
 	} else if (type == UDP && connection->isSSL == 1){
 
@@ -136,17 +147,22 @@ conn* socketClient(const char * hostname, const short port, CONN_TYPE type, int 
 	return connection;
 }
 
-conn * socketServer(const short port, CONN_TYPE type, int ssl) {
+Conn_t *socketServer(const short port, ConnType_t type, int ssl) {
 	struct sockaddr_in ServerAddr;
-	conn * connection;
-	connection = malloc(sizeof(conn));
-#ifdef OPENSSL
-	connection->sslHandle = NULL;
-	connection->ctx = NULL;
+	Conn_t *connection;
+	connection = malloc(sizeof(Conn_t));
+#if defined OPENSSL || defined GNUTLS
 	connection->isSSL = ssl;
-#endif
-#ifdef GNUTLS
-	connection->isSSL = ssl;
+	#ifdef OPENSSL
+		connection->sslHandle = NULL;
+		connection->ctx = NULL;
+	#elif defined GNUTLS
+		connection->session = NULL;
+	#endif
+#else
+		if (ssl == 1) {
+			return NULL;
+		}
 #endif
 
 	if (type == TCP) {
@@ -187,7 +203,7 @@ conn * socketServer(const short port, CONN_TYPE type, int ssl) {
 	return connection;
 }
 
-int loadCert(conn * connection, char * certPath, char * keyPath) {
+int loadCert(Conn_t *connection, const char *certPath, const char *keyPath) {
 #ifdef OPENSSL
 	if (SSL_CTX_use_certificate_file(connection->ctx, certPath, SSL_FILETYPE_PEM) < 0) {
 		return -1;
@@ -199,31 +215,36 @@ int loadCert(conn * connection, char * certPath, char * keyPath) {
 	if ( !SSL_CTX_check_private_key(connection->ctx)) {
 		return -1;
 	}
-#endif
 	return 0;
+#elif defined GNUTLS
+	return -1;
+#else
+	return -1;
+#endif
 }
 
-conn * socketAccept(conn *connection, struct sockaddr *__restrict addr, socklen_t *__restrict __addr_len) {
-	conn * client;
-	client = malloc(sizeof(conn));
-#ifdef OPENSSL
-	client->ctx = NULL;
-	client->sslHandle = NULL;
+Conn_t * socketAccept(Conn_t *connection, struct sockaddr *addr, socklen_t *addr_len) {
+	Conn_t * client;
+	client = malloc(sizeof(Conn_t));
+#if defined OPENSSL || defined GNUTLS
 	client->isSSL = connection->isSSL;
-#endif
-#ifdef GNUTLS
-	client->isSSL = connection->isSSL;
+	#ifdef OPENSSL
+		client->ctx = NULL;
+		client->sslHandle = NULL;
+	#elif defined GNUTLS
+		client->session = NULL;
+	#endif
 #endif
 
 #ifdef WII
-	client->sock = net_accept(connection->sock, addr, __addr_len);
+	client->sock = net_accept(connection->sock, addr, addr_len);
 #else
-	client->sock = accept(connection->sock, addr, __addr_len);
+	client->sock = accept(connection->sock, addr, addr_len);
 #endif
 
 #if defined OPENSSL || defined GNUTLS
 	if (connection->isSSL == 1) {
-#ifdef OPENSSL
+	#ifdef OPENSSL
 		client->ctx = SSL_CTX_new(TLSv1_2_server_method());
 		if (client->ctx == NULL) {
 			return NULL;
@@ -233,8 +254,8 @@ conn * socketAccept(conn *connection, struct sockaddr *__restrict addr, socklen_
 		if (SSL_accept(connection->sslHandle) < 0) {
 			return NULL;
 		}
-#elif defined GNUTLS
-#endif
+	#elif defined GNUTLS
+	#endif
 	} else {
 #endif
 #if defined OPENSSL || defined GNUTLS
@@ -243,7 +264,7 @@ conn * socketAccept(conn *connection, struct sockaddr *__restrict addr, socklen_
 	return client;
 }
 
-int socketClose(conn *connection) {
+int socketClose(Conn_t *connection) {
 	if (connection->sock) {
 #ifdef _WIN32
 	shutdown(connection->sock, SD_BOTH);
@@ -273,7 +294,7 @@ int socketClose(conn *connection) {
 	return 0;
 }
 
-int socketSend(conn *connection, const void * buf, size_t len, int flags) {
+int socketSend(Conn_t *connection, const void *buf, size_t len, int flags) {
 #ifdef OPENSSL
 	if (connection->isSSL == 1) {
 		SSL_write (connection->sslHandle, buf, len);
@@ -287,7 +308,7 @@ int socketSend(conn *connection, const void * buf, size_t len, int flags) {
 #ifdef WII
 	if (net_send(connection->sock, buf, len, flags) != len) {
 #else
-	if (send(connection->sock, buf, len, flags) != len) {
+	if (send(connection->sock, buf, len, flags) != (int)len) {
 #endif
 		return -1;
 	}
@@ -297,14 +318,14 @@ int socketSend(conn *connection, const void * buf, size_t len, int flags) {
 	return 0;
 }
 
-int socketRecv(conn *connection, void *buf, int len, int flags) {
+int socketRecv(Conn_t *connection, void *buf, int len, int flags) {
 #if defined OPENSSL || defined GNUTLS
 	if (connection->isSSL == 1) {
-#ifdef OPENSSL
+	#ifdef OPENSSL
 		return SSL_read(connection->sslHandle, buf, len);
-#elif defined GNUTLS
+	#elif defined GNUTLS
 		return gnutls_record_recv(connection->session, buf, len);
-#endif
+	#endif
 	} else {
 #endif
 #ifdef WII
@@ -314,19 +335,5 @@ int socketRecv(conn *connection, void *buf, int len, int flags) {
 #endif
 #if defined OPENSSL || defined GNUTLS
 	}
-#endif
-}
-
-int openPort(short port) {
-#ifdef UPNP
-#else
-	return -1;
-#endif
-}
-
-int closePort(short port) {
-#ifdef UPNP
-#else
-	return -1;
 #endif
 }

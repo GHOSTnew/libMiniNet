@@ -16,7 +16,8 @@
 #ifndef NET_H_
 #define NET_H_
 
-#define MININET_VERSION "1.1.0"
+#include <string.h>
+#include <malloc.h>
 
 /* --------- WINDOWS ------------ */
 #ifdef _WIN32
@@ -31,6 +32,12 @@
 #elif defined WII
 	#include <network.h>
 
+/* --------- NINTENDO DS ---------- */
+#elif defined DS
+	#include <dswifi9.h>
+	#include <sys/socket.h>
+	#include <netdb.h>
+	#include <netinet/in.h>
 /* ------------- UNIX ------------- */
 #else
 /* -------- z/OS------------- */
@@ -49,16 +56,10 @@
 	#include <openssl/err.h>
 #elif defined GNUTLS
 	#include <gnutls/gnutls.h>
+	#include <gnutls/x509.h>
 #endif
 
-#ifdef UPNP
-#include <miniupnpc/miniwget.h>
-#include <miniupnpc/miniupnpc.h>
-#include <miniupnpc/upnpcommands.h>
-#endif
-
-typedef struct conn conn;
-struct conn {
+struct Conn {
 #ifdef WII
 	s32 sock;
 #else
@@ -66,20 +67,27 @@ struct conn {
 #endif
 #if defined OPENSSL || defined GNUTLS
 	int isSSL;
-#ifdef OPENSSL
-	SSL *sslHandle;
-	SSL_CTX *ctx;
-#else
-	gnutls_session_t session;
-#endif
+	#ifdef OPENSSL
+		SSL *sslHandle;
+		SSL_CTX *ctx;
+	#else
+		gnutls_session_t session;
+	#endif
 #endif
 };
+typedef struct Conn Conn_t;
 
-typedef enum CONN_TYPE CONN_TYPE;
-enum CONN_TYPE {
+enum ConnType {
 	TCP,
 	UDP
 };
+typedef enum ConnType ConnType_t;
+
+enum ProxyType {
+	PROXY_NONE,
+	PROXY_SOCKS5
+};
+typedef enum ProxyType ProxyType_t;
 
 #ifdef WII
 static char ip_addr[16] = {0};
@@ -88,20 +96,22 @@ static char ip_addr[16] = {0};
 #ifdef  __cplusplus
 extern "C" {
 #endif
+/* -------- init function --------- */
 int NET_INIT(void);
 int NET_SSL_INIT(void);
 int NET_SSL_CLEAN(void);
 int NET_CLEAN(void);
 
-conn* socketClient(const char * hostname, const short port, CONN_TYPE type, int ssl);
-conn * socketServer(const short port, CONN_TYPE type, int ssl);
-conn * socketAccept(conn *connection, struct sockaddr *__restrict addr, socklen_t *__restrict __addr_len);
-int loadCert(conn * connection, char * certPath, char * keyPath);
-int socketClose(conn *connection);
-int socketSend(conn *connection, const void * buf, size_t len, int flags);
-int socketRecv(conn *connection, void *buf, int len, int flags);
-int openPort(short port);
-int closePort(short port);
+/* ------ create socket func ------ */
+Conn_t *socketClient(const char * hostname, const unsigned short port, ConnType_t type, int ssl);
+Conn_t *socketServer(const short port, ConnType_t type, int ssl);
+Conn_t *socketAccept(Conn_t *connection, struct sockaddr *addr, socklen_t *addr_len);
+
+/* --------- act on socket ---------*/
+int loadCert(Conn_t * connection, const char * certPath, const char * keyPath);
+int socketClose(Conn_t *connection);
+int socketSend(Conn_t *connection, const void *buf, size_t len, int flags);
+int socketRecv(Conn_t *connection, void *buf, int len, int flags);
 #ifdef  __cplusplus
 }
 #endif

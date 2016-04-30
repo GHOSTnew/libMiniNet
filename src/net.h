@@ -16,6 +16,8 @@
 #ifndef NET_H_
 #define NET_H_
 
+#define MININET_VERSION "2.0~prototype"
+
 #include <string.h>
 #include <malloc.h>
 
@@ -27,7 +29,6 @@
 	#include <winsock.h>
 	#include <winsock2.h>
 	#include <Ws2tcpip.h>
-
 /* --------- NINTENDO WII --------- */
 #elif defined WII
 	#include <network.h>
@@ -59,6 +60,10 @@
 	#include <gnutls/x509.h>
 #endif
 
+#ifdef __cplusplus
+extern "C" {
+#endif /* !__cplusplus */
+
 struct Conn {
 #ifdef WII
 	s32 sock;
@@ -89,13 +94,6 @@ enum ProxyType {
 };
 typedef enum ProxyType ProxyType_t;
 
-#ifdef WII
-static char ip_addr[16] = {0};
-#endif
-
-#ifdef  __cplusplus
-extern "C" {
-#endif
 /* -------- init function --------- */
 int NET_INIT(void);
 int NET_SSL_INIT(void);
@@ -112,8 +110,9 @@ int loadCert(Conn_t * connection, const char * certPath, const char * keyPath);
 int socketClose(Conn_t *connection);
 int socketSend(Conn_t *connection, const void *buf, size_t len, int flags);
 int socketRecv(Conn_t *connection, void *buf, int len, int flags);
+
 #ifdef  __cplusplus
 }
-#endif
+#endif /* !__cplusplus */
 
 #endif /* NET_H_ */

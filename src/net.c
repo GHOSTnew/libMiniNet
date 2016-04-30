@@ -15,6 +15,10 @@
 
 #include "net.h"
 
+#ifdef WII
+static char ip_addr[16] = { '\0' };
+#endif /* !WII */
+
 int NET_INIT(void) {
 #ifdef _WIN32
 	WSADATA wsaData;
